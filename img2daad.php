@@ -13,6 +13,16 @@ function error($errorMsg)
     exit(1);
 }
 
+function syntax()
+{
+    echo "IMG2DAAD 1.0 - Creates DAAD Graphic Databases for Atari ST and Amiga\n\n";
+    echo "SYNTAX: IMG2DAAD <folder> [outputfile] [-c]\n\n";
+    echo "<folder>     : folder where to look for .PI1 or .BMP images\n";
+    echo "[outputfile] : file name for the output database, if absent, PART1.DAT will be used.\n";
+    echo "-c           : compress file";
+    exit(0);
+}
+
 function dumpDatabase($outputFile, $outputFilename)
 {
     $fp  = fopen($outputFilename, 'w');
@@ -25,10 +35,30 @@ function dumpDatabase($outputFile, $outputFilename)
 }
 
 // MAIN
-$degas = new degasFileReader();
-if (!$degas->loadFile('10.PI1')) error('Invalid Degas Elite file.');
+echo "IMG2DAAD 1.0 - DAAD DAT Maker for Amiga and Atari ST (C) 2022\n";
+if ($argc<2) syntax();
+
+// Parse parameters
+$outputFilename = 'PART1.DAT';
+$compressed = 0;
+$dir = $argv[1];
+if (!is_dir($dir)) error ("Invalid folder: $dir");
+
+if ($argc>2)
+{
+     $nextParam = $argv[2];
+     if (strtoupper($nextParam) != '-C')  $outputFilename = $nextParam; else $compressed = true;
+}
+
+if ($argc >3) 
+{
+    $nextParam = $argv[3];
+    if (strtoupper($nextParam) == '-C') $compressed=true; else Error("Invalid param: $nextParam");
+}
 
 $outputFile = array();
+
+echo "Creating $outputFilename with" . ($compressed ? '':'out') . " compression.\n";
 
 // The DAT file header
 
@@ -39,100 +69,192 @@ $outputFile[] = 0x00;
 $outputFile[] = 0x00;  // Output screen mode (low res, 320x200)
 
 $outputFile[] = 0x00;  
-$outputFile[] = 0x01;  // Output number of pictures
+$outputFile[] = 0x00;  // Dummy for number of pictures
 
 $outputFile[] = 0x00;  
 $outputFile[] = 0x00;  
 $outputFile[] = 0x00;  
 $outputFile[] = 0x00;   // Dummy for filesize
 
-// First "image header"
+// Fill the locations table with dummy
 
-$outputFile[] = 0x00;  
-$outputFile[] = 0x00;  
-$outputFile[] = 0x30;  
-$outputFile[] = 0x0A;   // Offset to data
+for ($i=0;$i<25;$i++)
+    for ($j=0;$j<48;$j++)
+        $outputFile[] = 0x00;
 
-$outputFile[] = 0x00;  
-$outputFile[] = 0x04;  // Flags (no buffer, fixed)
-
-$outputFile[] = 0x00;  
-$outputFile[] = 0x00;   // X coord
-
-$outputFile[] = 0x00;  
-$outputFile[] = 0x00;   // Y coord
-
-$outputFile[] = 0x00;   // First palette color,filler as it's float
-$outputFile[] = 0x0F;   // Last palette color,filler as it's float
-
-// Now the palette
-$degas->seekFile(2);  // point to palette
-
-for($i=0;$i<32;$i++) $outputFile[] = $degas->readByte(); // read palette
-
-$outputFile[] = 0x00;  
-$outputFile[] = 0x00;   
-$outputFile[] = 0x00;  
-$outputFile[] = 0x00;   // CGA palette pointer, filler as there is no CGA palette
-
-// Now fill the other 255 "image headers"
-
-for ($i=0;$i<255;$i++)
- for ($j=0;$j<48;$j++)
-   $outputFile[] = 0x00;
-
-$screen = array();
-for ($i=0;$i<32000;$i++) $screen[] = $degas->readByte(); // read 32.000 bytes of image data
-
-
-// we will be getting only the window (0,0,320,96)
-
-$xs = 0;
-$ys = 0;
-$width = CLIPWIDTH;
-$height= CLIPHEIGHT; 
-
-// From now on, this is a copy of Tim's code, which honestly I haven't tried to understand, 
-// basically because I don't need to :-)
-
-$co=0;
-$xs=$xs>>3; // Convert to a column number 
-$width=$width>>3;
-
-
-
-$length=$width * $height * NUM_PLANES; // 4 = number of planes
-$lo=$ys * BYTES_PER_LINE;
-$cs = ($xs>>1) * (NUM_PLANES<<1) + ($xs & 1); 
-
-for($l=0;$l<$height;$l++)
+$files = scandir($dir);
+$fileList = array();
+foreach ($files as $file)
 {
-  $cp=$cs;
-  for($c=0;$c<$width;$c++)
-  {
-    for($p=0;$p<NUM_PLANES;$p++)
-      $clipdata[$co++] = $screen[$lo + $cp + ($p<<1)];
-    $cp++;
-    if(($cp & 1)==0) $cp+=(NUM_PLANES-1)*2; /* Skip plane data */
-  }
-  $lo+=BYTES_PER_LINE;
+    $extension = strtoupper(explode('.',"$file.")[1]);
+    if (($extension != 'PI1') && ($extension!='JSON')) continue;
+
+    $location = explode('.',"$file.")[0];
+    if (!is_numeric($location)) error("Invalid location number in $file.");
+    $location = intval($location);
+    if (($location<0) ||($location>255)) error("Invalid location number in $file.");
+    
+    if (!array_key_exists($location, $fileList))
+    {
+        $obj = new stdClass();
+        $fileList[$location] = $obj;
+    }
+    if ($extension=='JSON') 
+    {
+        $fileList[$location]->hasJSON=true;
+        $fileList[$location]->JSONfilename=$file;
+    }
+    else
+    {
+        $fileList[$location]->hasPI1 = true;
+        $fileList[$location]->PI1filename=$file;
+    } 
 }
 
-// Tim's code ends here
+$imgsLoaded = array();
+ksort($fileList, SORT_NUMERIC);
 
-// The image data mini header
-$outputFile[] = CLIPWIDTH  >> 8; //MSB
-$outputFile[] = CLIPWIDTH & 0x00FF ; //LSB
+foreach ($fileList as $location=>$fileData)
+{
+    echo "Processing location $location.\n";
 
-$outputFile[] = CLIPHEIGHT  >> 8; //MSB
-$outputFile[] = CLIPHEIGHT & 0x00FF ; //LSB
+    if ($fileData->hasPI1)
+    {
+        $imgsLoaded[]=$location;
 
-$datasize = sizeof($clipdata);
+        $file = $fileData->PI1filename;
 
-$outputFile[] = $datasize  >> 8; //MSB
-$outputFile[] = $datasize & 0x00FF ; //LSB
+        $degas = new degasFileReader(); 
+        
+        if (!$degas->loadFile($dir . DIRECTORY_SEPARATOR . $file)) error('Invalid Degas Elite file.');
 
-for ($i=0;$i<$datasize;$i++) $outputFile[] = $clipdata[$i];
+        // *** Fill the location data ***
+
+        $locationPrt = 0x0A + 48 * $location;
+        $currentOffset  = sizeof($outputFile);
+
+        // Offset to location pixels data
+        $outputFile[$locationPrt] = ($currentOffset & 0xFF000000) >> 24;  
+        $outputFile[$locationPrt+1] = ($currentOffset & 0x00FF0000) >> 16;  
+        $outputFile[$locationPrt+2] = ($currentOffset & 0x0000FF00) >> 8;
+        $outputFile[$locationPrt+3] = $currentOffset & 0x000000FF;
+
+
+        $outputFile[$locationPrt+4] = 0x00;  
+        $outputFile[$locationPrt+5] = 0x04;  // Flags (no buffer, fixed)
+
+        /*
+        This part has been commented as values are already 0x00, so
+        code is just ketp so what we do is understood.
+
+        $outputFile[$locationPrt+6] = 0x00;  
+        $outputFile[$locationPrt+7] = 0x00;   // X coord
+
+        $outputFile[$locationPrt+8] = 0x00;  
+        $outputFile[$locationPrt+9] = 0x00;   // Y coord
+
+        $outputFile[$locationPrt+10] = 0x00;   // First palette color,filler as it's float
+        */
+
+        $outputFile[$locationPrt+11] = 0x0F;   // Last palette color,filler as it's float
+
+        // Now the palette
+        $degas->seekFile(2);  // point to palette
+
+        for($i=0;$i<32;$i++) $outputFile[$locationPrt+12+$i] = $degas->readByte(); // read palette
+
+        /*
+        Again, this part has been commented as values are already
+        0x00, so code is just ketp so what we do is understood.
+
+        $outputFile[$locationPrt+44] = 0x00;  
+        $outputFile[$locationPrt+45] = 0x00;   
+        $outputFile[$locationPrt+46] = 0x00;  
+        $outputFile[$locationPrt+47] = 0x00;   // CGA palette pointer, filler as there is no CGA palette
+        */
+
+        $screen = array();
+        for ($i=0;$i<32000;$i++) $screen[] = $degas->readByte(); // read 32.000 bytes of image data
+
+
+        // we will be getting only the window (0,0,320,96)
+
+        $xs = 0;
+        $ys = 0;
+        $width = CLIPWIDTH;
+        $height= CLIPHEIGHT; 
+
+        // From now on, this is a copy of Tim Gilberts's code, which honestly I haven't even
+        // tried to understand,  basically because it worked out of the box :-)
+
+        $co = 0;
+        $xs = $xs>>3; // Convert to a column number 
+        $width = $width>>3;
+
+        $length = $width * $height * NUM_PLANES; // 4 = number of planes
+        $lo=$ys * BYTES_PER_LINE;
+        $cs = ($xs>>1) * (NUM_PLANES<<1) + ($xs & 1); 
+
+        for($l=0;$l<$height;$l++)
+        {
+            $cp = $cs;
+            for($c=0;$c<$width;$c++)
+            {
+                for($p=0;$p<NUM_PLANES;$p++)
+                $clipdata[$co++] = $screen[$lo + $cp + ($p<<1)];
+                $cp++;
+                if(($cp & 1)==0) $cp += (NUM_PLANES-1)*2; // Skip plane data 
+            }
+            $lo+=BYTES_PER_LINE;
+        }
+        // Tim Gilbert's code ends here
+
+        // Let's dump the pixels data now
+        // Fist the mini header at the pixels area
+        $outputFile[] = CLIPWIDTH  >> 8; //MSB
+        $outputFile[] = CLIPWIDTH & 0x00FF ; //LSB
+
+        $outputFile[] = CLIPHEIGHT  >> 8; //MSB
+        $outputFile[] = CLIPHEIGHT & 0x00FF ; //LSB
+
+        $datasize = sizeof($clipdata);
+
+        $outputFile[] = $datasize  >> 8; //MSB
+        $outputFile[] = $datasize & 0x00FF ; //LSB
+
+        // And now, data itself
+        for ($i=0;$i<$datasize;$i++) $outputFile[] = $clipdata[$i];
+    }
+
+    // Now check if there is JSON to apply
+    if (property_exists($fileData, 'hasJSON') && ($fileData->hasJSON))
+    {
+        // A JSON can only be applied if a image has been loaded in that slot, or if the JSON is to clone a image
+        $json = json_decode(file_get_contents($dir . DIRECTORY_SEPARATOR . $fileData->JSONfilename));
+        if (!$json) error ('Invalid JSON file: ' .$fileData->JSONfilename);
+        if ((in_array($location, $imgsLoaded))|| ($json->clone == 1))
+        {
+            // First check if we have to clone
+            if ($json->clone==1)
+            {
+                if (!property_exists($json, 'location')) error($fileData->JSONfilename . " requests to clone a location but location is missing");
+                if (!is_numeric($json->location))  error($fileData->JSONfilename . " requests to clone a location but location is not valid");
+                if ($json->location>=$location)  error($fileData->JSONfilename . " asks to clone a location not yet loaded (". $json_location . ')');
+                // Clone location header
+                for ($i=0;$i<48;$i++)
+                {
+                    $outputFile[0x0a + 48 * $location + $i] = $outputFile[0x0a + 48 * $json->location + $i];
+                }
+            }
+            // Now, just apply JSON settings
+
+
+        }
+        else error('There was no picture for location #' . $location);
+    }
+
+
+} // foreach file
 
 // Update file size in the header
 $filesize = sizeof($outputFile);
@@ -141,8 +263,10 @@ $outputFile[7] = ($filesize & 0x00FF0000) >> 16;
 $outputFile[8] = ($filesize & 0x0000FF00) >> 8;
 $outputFile[9] = ($filesize & 0x000000FF);
 
-dumpDatabase($outputFile, "PART1.DAT");
+// Update numer of images
+$outputFile[4] = (sizeof($imgsLoaded) & 0xFF00) >> 8;
+$outputFile[5] = sizeof($imgsLoaded) & 0xFF;
 
 
-
+dumpDatabase($outputFile, $outputFilename);
 
