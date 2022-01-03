@@ -1,0 +1,80 @@
+DAT IMAGE DATABASE FILE FORMAT (DMG 3.0 - Atari)
+================================================
+
+This is the result of my investigations about the PART1.DAT file format. It's important
+to know that my investigations took place to try to create files wihout DMG for the 
+Atari ST and Amiga target, thus there is no information here for other databases like the
+one for Amstrad PCW or those for the original DOS interpreter. The PCW one may be examined
+later though, the DOS one is not of my interest since PCDAAD exists. Uto, 2022.
+
+The file has a header with the following format. Please notice all values are 
+little endian:
+
+Offset   Content
+------   -------
+00-01    Version (0x0300 value for  DMG 3)
+02-03    Screen mode: 0000 = LOW_RES (that seems yo be the ST/Amiga). Mabe you 
+         can also find decimal 13 for EGA and 4 for CGA, but this has not been
+         checked.
+04-05    Number of locations. 
+06-09    File size.
+0A-3009  The location info area, which is a zone of 256 blocks of 48 bytes, one per 
+         location, defined below. There are allways 256 blocks, no matter how 
+         many locations there are.
+
+The location info blocks
+========================
+
+Each location info block is defined like this:
+
+Offset   Content
+------   -------
+00-03    Offset of image data in the file
+04-05    Flags: see below
+06-07    X coord the graphic is fixed, 0x0000 otherwise.
+08-09    Y coord the graphic is fixed, 0x0000 otherwise.
+0A       First palette value to be applied in fixed graphics (0x00 default), 0x00 otherwise.
+0B       First palette value to be applied in fixed graphics (0x0F default), 0xFF otherwise.
+0C-2B    The palette, 32 bytes (see below)
+2C-2F    This is related to CGA palette, but how to use is unknown at this moment.
+
+The flags field
+===============
+The field is a bitwise field, this is the meaning of the bits:
+
+Bit 0: set to 1 for float images, 0 for fixed
+Bit 1: set to 1 for buffered, 0 not buffered
+Bit 2: old source code defines it as CGAP01, no idea what it is for but DMGv3 allways sets to 1.
+Bit 3: old source code defines it as HOTSP. No idea what it is for, DMGv3 sets to 0.
+Bit 4: old sources defines it as SAMPLE. I assume that it tells the content is no image but SFX.
+
+The palette
+===========
+The palette is in the usual AtariST format, that is, 16 pairs of words with the following meaning:
+
+xxxxxRRR xGGGxBBB
+
+Please notice DMGv3 is able o also add the EGA equivalence color at the first 4 bits, but I have
+not gone if dept about that as as said above, I have no interest in old DOS interpreter support at
+this point. It would be like this:
+
+EEEExRRR xGGGxBBB
+
+
+The image data
+==============
+Each of the locations who has been initialized in the location info blocks will have their image
+data located at the offset specified by that information. There you can find the image header 
+data, followed by the image data itself.
+
+The image header:
+
+Offset   Content
+------   -------
+00-01    Width. If block is compressed, msb will be set to 1. i.e. 00 20 means (0x20 width, 
+         32 width, not compressed, while 80 20 means 32 width, compressed)
+02-03    Height
+04-05    Data size. 
+
+After the header, there comes the compressed of uncompressed image data.
+
