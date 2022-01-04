@@ -5,6 +5,7 @@ define('CLIPHEIGHT',96); // as a standard for DAAD Ready and Maluva, but change 
 define('NUM_PLANES',4);
 define('BYTES_PER_LINE',160);
 
+include_once('png.php');
 include_once('degas.php');
 
 function error($errorMsg)
@@ -17,9 +18,12 @@ function syntax()
 {
     echo "IMG2DAAD 1.0 - Creates DAAD Graphic Databases for Atari ST and Amiga\n\n";
     echo "SYNTAX: IMG2DAAD <folder> [outputfile] [-c]\n\n";
-    echo "<folder>     : folder where to look for .PI1 or .BMP images\n";
+    echo "<folder>     : folder where to look for .PI1 or .PNG images\n";
     echo "[outputfile] : file name for the output database, if absent, PART1.DAT will be used.\n";
-    echo "-c           : compress file";
+    echo "-c           : compress file\n\n";
+    echo "Please notice PNG images can have any format, but must be 320x200, and use a maximum of 16 colours.\n";
+    echo "Also, the Atari ST palette is used, so please keep that in mind when creating PNG images or colours may be affeceted.";
+    
     exit(0);
 }
 
@@ -60,6 +64,8 @@ $outputFile = array();
 
 echo "Creating $outputFilename with" . ($compressed ? '':'out') . " compression.\n";
 
+if ($compressed) error('Compression not yet supported');
+
 // The DAT file header
 
 $outputFile[] = 0x03;
@@ -78,7 +84,7 @@ $outputFile[] = 0x00;   // Dummy for filesize
 
 // Fill the locations table with dummy
 
-for ($i=0;$i<25;$i++)
+for ($i=0;$i<256;$i++)
     for ($j=0;$j<48;$j++)
         $outputFile[] = 0x00;
 
@@ -87,8 +93,7 @@ $fileList = array();
 foreach ($files as $file)
 {
     $extension = strtoupper(explode('.',"$file.")[1]);
-    if (($extension != 'PI1') && ($extension!='JSON')) continue;
-
+    if (($extension != 'PI1') && ($extension != 'PNG') && ($extension != 'JSON')) continue;
     $location = explode('.',"$file.")[0];
     if (!is_numeric($location)) error("Invalid location number in $file.");
     $location = intval($location);
@@ -103,11 +108,18 @@ foreach ($files as $file)
     {
         $fileList[$location]->hasJSON=true;
         $fileList[$location]->JSONfilename=$file;
+        
     }
-    else
+    else 
+    if ($extension=='PI1') 
     {
         $fileList[$location]->hasPI1 = true;
         $fileList[$location]->PI1filename=$file;
+    } 
+    else 
+    {
+        $fileList[$location]->hasPNG = true;
+        $fileList[$location]->PNGfilename=$file;
     } 
 }
 
@@ -116,18 +128,28 @@ ksort($fileList, SORT_NUMERIC);
 
 foreach ($fileList as $location=>$fileData)
 {
-    echo "Processing location $location.\n";
 
-    if ($fileData->hasPI1)
+    if ( ((property_exists($fileData, 'hasPI1')) &&  ($fileData->hasPI1)) || ((property_exists($fileData, 'hasPNG')) &&  ($fileData->hasPNG)) ) 
     {
+        echo "Processing image $location ";
         $imgsLoaded[]=$location;
 
-        $file = $fileData->PI1filename;
+        if ((property_exists($fileData, 'hasPNG')) &&  ($fileData->hasPNG)) // PNG over PI1
+        {
+            $file = $fileData->PNGfilename;
+            $degas = new pngFileReader();
+            $result = $degas->loadFile($dir . DIRECTORY_SEPARATOR . $file);
+            if ($result!='') error($result);
+        }
+        else
+        {
+            $file = $fileData->PI1filename;
+            $degas = new degasFileReader(); 
+            $result = $degas->loadFile($dir . DIRECTORY_SEPARATOR . $file);
+            if ($result!='') error($result);
+        }
 
-        $degas = new degasFileReader(); 
-        
-        if (!$degas->loadFile($dir . DIRECTORY_SEPARATOR . $file)) error('Invalid Degas Elite file.');
-
+        echo " ($file).\n";
         // *** Fill the location data ***
 
         $locationPrt = 0x0A + 48 * $location;
@@ -232,15 +254,17 @@ foreach ($fileList as $location=>$fileData)
         // A JSON can only be applied if a image has been loaded in that slot, or if the JSON is to clone a image
         $json = json_decode(file_get_contents($dir . DIRECTORY_SEPARATOR . $fileData->JSONfilename));
         if (!$json) error ('Invalid JSON file: ' .$fileData->JSONfilename);
+        echo "Processing JSON file $fileData->JSONfilename ...\n";
         if ((in_array($location, $imgsLoaded))|| ($json->clone == 1))
         {
             // First check if we have to clone
-            if ($json->clone==1)
+            if ((property_exists($json, 'clone')) && ($json->clone==1))
             {
                 if (!property_exists($json, 'location')) error($fileData->JSONfilename . " requests to clone a location but location is missing");
                 if (!is_numeric($json->location))  error($fileData->JSONfilename . " requests to clone a location but location is not valid");
                 if ($json->location>=$location)  error($fileData->JSONfilename . " asks to clone a location not yet loaded (". $json_location . ')');
                 // Clone location header
+                echo "Location $location is now a clone of location $json->location...\n";
                 for ($i=0;$i<48;$i++)
                 {
                     $outputFile[0x0a + 48 * $location + $i] = $outputFile[0x0a + 48 * $json->location + $i];
@@ -248,12 +272,33 @@ foreach ($fileList as $location=>$fileData)
             }
             // Now, just apply JSON settings
 
+            
+            $float =  (property_exists($json, 'float') && ($json->float==1));
+            $buffer =  (property_exists($json, 'buffer') && ($json->buffer==1));
+            if (!property_exists($json, 'fixedX')) $fixedX = 0; else $fixedX = $json->fixedX;
+            if (!property_exists($json, 'fixedY')) $fixedY = 0; else $fixedY = $json->fixedY;
+            if (!property_exists($json, 'firstPAL')) $firstPAL = 0; else $firstPAL = $json->firstPAL;
+            if (!property_exists($json, 'lastPAL')) $lastPAL = 0x0F; else $lastPAL = $json->lastPAL;
 
+            if (!is_numeric($lastPAL)) error("Invalid lastPAL value in ".  $fileData->JSONfilename);
+            if (!is_numeric($firstPAL)) error("Invalid firstPAL value in ".  $fileData->JSONfilename);
+            if (!is_numeric($fixedX)) error("Invalid fixedX value in ".  $fileData->JSONfilename);
+            if (!is_numeric($fixedY)) error("Invalid fixedY value in ".  $fileData->JSONfilename);
+
+            $flags = 4 + 2 * $buffer + $float;
+            $fixedX  =intval($fixedX);
+            $fixedY = intval($fixedY);
+
+            $outputFile[0x0a + $location * 48 + 5] = $flags;
+            $outputFile[0x0a + $location * 48 + 6] = ($fixedX & 0xFF00)>>8;
+            $outputFile[0x0a + $location * 48 + 7] = $fixedX & 0xFF;
+            $outputFile[0x0a + $location * 48 + 8] = ($fixedY & 0xFF00)>>8;
+            $outputFile[0x0a + $location * 48 + 9] = $fixedY & 0xFF;
+            $outputFile[0x0a + $location * 48 + 0x0A] = $firstPAL;
+            $outputFile[0x0a + $location * 48 + 0x0B] = $lastPAL;
         }
         else error('There was no picture for location #' . $location);
     }
-
-
 } // foreach file
 
 // Update file size in the header
@@ -267,6 +312,8 @@ $outputFile[9] = ($filesize & 0x000000FF);
 $outputFile[4] = (sizeof($imgsLoaded) & 0xFF00) >> 8;
 $outputFile[5] = sizeof($imgsLoaded) & 0xFF;
 
-
+echo "Writing file $outputFilename...";
 dumpDatabase($outputFile, $outputFilename);
+echo "OK.\n";
+
 

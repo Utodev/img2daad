@@ -14,14 +14,14 @@ class degasFileReader
 
         $this->fileContent = array();
         $this->fileSize = filesize($filename);
-        if ($this->fileSize!=32066) return false; // Degas Elite 320x200x16 is 32066 bytes long
+        if ($this->fileSize!=32066) return "Invalid Degas Elite 320x200, 16 colours file size, must be 32066 bytes"; // Degas Elite 320x200x16 is 32066 bytes long
         $fp = fopen($filename, 'rb');
         for ($i=0;$i<$this->fileSize;$i++)
             $this->fileContent[] = ord(fread($fp, 1));
         fclose($fp);
         $this->position = 0;
-        if ($this->fileContent[0] + $this->fileContent[1]) return false; // First two bytes in a Degas Elite 320x200x16 must be 00 00 signature.
-        return true;
+        if ($this->fileContent[0] + $this->fileContent[1]) return "Bad Degas Elite file signature"; // First two bytes in a Degas Elite 320x200x16 must be 00 00 signature.
+        return "";
 
     }
 
