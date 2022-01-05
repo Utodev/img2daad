@@ -14,7 +14,7 @@ class degasFileReader
 
         $this->fileContent = array();
         $this->fileSize = filesize($filename);
-        if ($this->fileSize!=32066) return "Invalid Degas Elite 320x200, 16 colours file size, must be 32066 bytes"; // Degas Elite 320x200x16 is 32066 bytes long
+        if ( ($this->fileSize!=32066) && ($this->fileSize!=32034)) return "Invalid Degas or Degas Elite 320x200, 16 colours file size, must be 32066 or 32034 bytes"; // Degas Elite 320x200x16 is 32066 bytes long
         $fp = fopen($filename, 'rb');
         for ($i=0;$i<$this->fileSize;$i++)
             $this->fileContent[] = ord(fread($fp, 1));
