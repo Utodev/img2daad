@@ -131,12 +131,13 @@ foreach ($fileList as $location=>$fileData)
 
     if ( ((property_exists($fileData, 'hasPI1')) &&  ($fileData->hasPI1)) || ((property_exists($fileData, 'hasPNG')) &&  ($fileData->hasPNG)) ) 
     {
-        echo "Processing image $location ";
+        echo ">> Processing image $location ";
         $imgsLoaded[]=$location;
 
         if ((property_exists($fileData, 'hasPNG')) &&  ($fileData->hasPNG)) // PNG over PI1
         {
             $file = $fileData->PNGfilename;
+            echo " ($file).\n";
             $degas = new pngFileReader();
             $result = $degas->loadFile($dir . DIRECTORY_SEPARATOR . $file);
             if ($result!='') error($result);
@@ -144,12 +145,13 @@ foreach ($fileList as $location=>$fileData)
         else
         {
             $file = $fileData->PI1filename;
+            echo " ($file).\n";
             $degas = new degasFileReader(); 
             $result = $degas->loadFile($dir . DIRECTORY_SEPARATOR . $file);
             if ($result!='') error($result);
         }
 
-        echo " ($file).\n";
+        
         // *** Fill the location data ***
 
         $locationPrt = 0x0A + 48 * $location;
@@ -184,6 +186,14 @@ foreach ($fileList as $location=>$fileData)
         $degas->seekFile(2);  // point to palette
 
         for($i=0;$i<32;$i++) $outputFile[$locationPrt+12+$i] = $degas->readByte(); // read palette
+
+        $overPalette = false;
+        for ($i=0;$i<16;$i++)
+        {
+            if ($outputFile[$locationPrt+12+$i*2] & 0x0F > 7 ) $overPalette = 1; 
+            if ($outputFile[$locationPrt+12+$i*2+1] & 0x0F > 7 ) $overPalette = 1; 
+            if (($outputFile[$locationPrt+12+$i*2+1] & 0xF0 >> 4) > 7 ) $overPalette = 1; 
+        }
 
         /*
         Again, this part has been commented as values are already

@@ -1,7 +1,17 @@
 <?php 
 
-define('COLOUR_BLACK_PALETTE_IDX',0);
-define('COLOUR_WHITE_PALETTE_IDX',14);
+// Important note: I have found that if I put whitest color at palette entry 15, then the
+// Atari ST interpreter shows white text if either you execute "INK 1" or do nothing  (1
+// seems to be default). But if I use any other number, i.e. 7, then you have to do INK 8
+// to show white, or INK 13 if I put white at 12.
+define('COLOUR_BLACK_PALETTE_IDX',0 );
+define('COLOUR_WHITE_PALETTE_IDX',15); 
+// The following colours are the objective when looking for white or black
+// You can change them if you want different text or background colours
+define('WHITE',0x0777);
+define('TRUECOLOR_WHITE',0xFFFFFF);
+define('BLACK',0x0000);
+define('TRUECOLOR_BLACK',0x000000);
 
 //This class provides a way to read a png file of 320x200, max 16 colours
 
@@ -12,15 +22,21 @@ class pngFileReader
     var $fileContent;
     var $fileSize;
     var $position;
+    var $verbose;
 
-    function loadFile($filename)
+    function loadFile($filename, $verbose  = 0 )
     {
 
+        $this->verbose = $verbose;
         $imageSizes = getimagesize($filename);
         if ($imageSizes[0]!=320) return "Invalid resolution, must be 320x200"; // Expecting 320x200 image
         if ($imageSizes[1]!=200) return "Invalid resolution, must be 320x200"; // Expecting 320x200 image
 
         $this->image = imagecreatefrompng ($filename);
+         // If the image is indexed, convert to truecolor because we will only process truecolor images later
+         if (!imageistruecolor($this->image))
+           if (!imagepalettetotruecolor($this->image)) 
+             return "Image is not Truecolor and canno be converted to Truecolor";
 
         // Check number of different colours in the image
         $differentColours = array();
@@ -31,7 +47,9 @@ class pngFileReader
           if (!in_array($c, $differentColours)) $differentColours[] = $c;
           if (sizeof($differentColours)>16) return "Too many colours, only up to 16 colours allowed.";   
          }
-       
+         if ($this->verbose) echo "Found " .sizeof($differentColours) . " colours in this picture.\n";
+   
+
         $this->PNG2degas($differentColours);
         return "";
 
@@ -74,15 +92,25 @@ class pngFileReader
             $r = ($colour >> 16) & 0xFF;
             $g = ($colour >> 8) & 0xFF;
             $b = $colour & 0xFF;
+            //if ($this->verbose) echo "Original Palete R: " .decbin($r) . " G " . decbin($g) . " B "  . decbin($b) . "\n";
             // Reduce to 3 bit
             $r = $r >> 4; $r=($r % 2)  + ($r >> 1); if ($r>7) $r= 7;  // Round up one if last bit lost is 1
             $g = $g >> 4; $g=($g % 2)  + ($g >> 1); if ($g>7) $g= 7;  // unless the result will go over 111
             $b = $b >> 4; $b=($b % 2)  + ($b >> 1); if ($b>7) $b= 7;  
+            //if ($this->verbose) echo "9-bit palette R: " .decbin($r) . " G " . decbin($g) . " B "  . decbin($b) . "\n";
             // Convert to AtariST palette
             $palette[$i] = $b + ($g << 4) + ($r << 8);
             // If one of them is already recognized as black or white, we note it down
-            if ($palette[$i]==0) $colourBlack = $i;
-            if ($palette[$i]==0x0777) $colourWhite = $i;
+            if ($palette[$i]==BLACK) 
+            {
+                $colourBlack = $i;
+                if ($this->verbose) echo "Pure black found at colour $colourBlack.\n";
+            }
+            if ($palette[$i]==WHITE) 
+            {
+                $colourWhite = $i;
+                if ($this->verbose) echo "Pure white found at colour $colourWhite.\n";
+            }
         }
 
 
@@ -93,14 +121,14 @@ class pngFileReader
         {
             if (sizeof($palette) %  2)
             {
-                $differentColours[] = 0xFFFFFF;
-                $palette[] = 0x0777;
+                $differentColours[] = TRUECOLOR_WHITE;
+                $palette[] = WHITE;
                 $colourWhite = sizeof($palette) -1 ;
             }
             else
             {
-                $differentColours[] = 0;
-                $palette[] = 0;
+                $differentColours[] = TRUECOLOR_BLACK;
+                $palette[] = BLACK;
                 $colourBlack = sizeof($palette) -1;
             }
         }
@@ -109,12 +137,12 @@ class pngFileReader
         // If still not found (no pure ones and palette already full or filled without adding white)
         // we have to find the closest colour to black to use as black
         if ($colourBlack == -1)
-            $colourBlack = $this->searchColour($palette, 0, 0, 0);
+            $colourBlack = $this->searchColour($palette, (BLACK & 0x0F00) >> 8, (BLACK & 0x00F0) >> 4, BLACK & 0x0F);
 
         // Same for the white, except that we make sure the previously selected colourBlack is chosen
         // even in the very rare case the same colour is at the same time the clostest to B and W
         if ($colourWhite == -1)
-            $colourWhite = $this->searchColour($palette, 7, 7, 7, $colourBlack); 
+            $colourWhite = $this->searchColour($palette, (BLACK & 0x0F00) >> 8, (BLACK & 0x00F0) >> 4, BLACK & 0x0F, $colourBlack); 
 
 
         // Now we will be creating an alternative bitmap, where every x,y has the value of the palette
@@ -136,6 +164,7 @@ class pngFileReader
         // If black and white are not placed at the proper place, move them
         if ($colourWhite != COLOUR_WHITE_PALETTE_IDX)
         {
+            if ($this->verbose) echo "Swapping colour white from $colourWhite to ".COLOUR_WHITE_PALETTE_IDX."  \n";
                 $match[COLOUR_WHITE_PALETTE_IDX] = $colourWhite; // Swap  the matchings
                 $match[$colourWhite] = COLOUR_WHITE_PALETTE_IDX;
 
@@ -153,6 +182,7 @@ class pngFileReader
         
         if ($colourBlack != COLOUR_BLACK_PALETTE_IDX)
         {
+                if ($this->verbose) echo "Swapping colour black from $colourBlack to ".COLOUR_BLACK_PALETTE_IDX."  \n";
                 $match[COLOUR_BLACK_PALETTE_IDX] = $colourBlack; // Swap  the matchings
                 $match[$colourBlack] = COLOUR_BLACK_PALETTE_IDX;
 
@@ -213,6 +243,12 @@ class pngFileReader
         $this->position = 0;
     }
 
+    // Please notice this is no the most accurate way of searching for a close colour,
+    // but the fastest one. If you notice a color not expected is chosen when there
+    // is no white in the picture, you may try to modifí the weights of each 
+    // RGB color below (check those 0.4, 0.4, 0.2). Please notice human eye detects
+    // blue tones worse.
+
     private function searchColour($palette, $r, $g, $b, $skipColour = -1)
     {
      $closerColour = -1;
@@ -226,11 +262,11 @@ class pngFileReader
          $pb = $palette[$i] & 0x0007;
          //compare with target colour
          $distance  = sqrt(( pow(abs($pr-$r),2)*0.4) + pow(abs($pg-$g)*0.4,2) + pow(abs($pb-$b)*0.2,2));
-        if ($distance<$betterDistance)
-        {
-            $betterDistance = $distance;
-            $closerColour = $i;
-        }
+         if ($distance<$betterDistance)
+         {
+             $betterDistance = $distance;
+             $closerColour = $i;
+         }
      }
      return $closerColour;
     }
