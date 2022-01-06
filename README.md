@@ -74,6 +74,9 @@ Cutting
 At the moment, img2daad will only cut the 320x200 image to create a fixed graphic 
 placed at 0,0, and with 320x96 size.
 
+If you want another height or width, you can edit img2daad.php file, and change
+CLIPWIDTH and CLIPHEIGHT values.
+
 Cloning
 -------
 Sometimes the same graphic is used for more than one location. Of course, you 
