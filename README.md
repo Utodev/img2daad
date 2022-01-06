@@ -32,6 +32,17 @@ php img2daad <folder> <output-file>
 i.e. "php img2daad mygame/images PART2.DAT" will create PART2.DAT file instead
 of the default PART1.DAT.
 
+Problems with imagecreatefrompng
+--------------------------------
+If you are told "imagecreatefrompng" function does not exists, your php installation 
+is missing the GD library, or it's not active. It's basically a matter of making sure
+it's installed, and updating php.ini file, but it's beyond the scope of this document
+to explain how, just google it.
+
+If you use Windows there is a easy way to get it running: just download DAAD Ready
+(https://www.ngpaws.com/daadready) and borrow the "PHP" folder in there. It already
+has GD installed.
+
 Text and palette
 ----------------
 Please notice the palette applied to the graphic will also affect text. Thus,
@@ -51,6 +62,11 @@ white in your palette for all pictures.
 
 If not, well, the algorythm is made to be fast rather than accurate, so if you let
 img2daad to find the closest colour to white you may be lucky or not.
+
+If your game doesn't use black background or white text, you may edit png.php and
+at the top change the colours used for "white" and "black". You would have to change
+both the truecolor colour, and the normal one (Atari ST palette). Please take in
+mind maximum value in Atari Palette is 7, that's why truecolor #FFFFFF becomes 777.
 
 
 Cutting
