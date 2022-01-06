@@ -5,12 +5,14 @@ A tool to include images into DAAD graphics database (DAT files)
 This tool is able to create a DAAD Graphics Database for Atari ST and Amiga, 
 from either a group of Degas files (PI1) or PNG files.
 
-In either case they should be 320x200, 16 colour images. Please notice you 
-don't need to create a 16 colour PNG file, just make sure you don't use more
-than 16 colours. Also, for PNG files, take in mind DAAD only supports 3-bit 
-depth colours, so you would have to stick to AtariST palette or your colours
-would be affected when packing. Please search for "Atari ST palette" or
-"9-bit palette" to find a proper one.
+In either case they should be 320x200, 16 colour images, although if you use
+PNG files, you don't need to create indexed palette, just make sure you don't 
+use more than 16 colours.
+
+Also, for PNG files, take in mind DAAD only supports 3-bit depth colours, 
+so you would have to stick to AtariST palette or your colours would be 
+affected when packing. Please search for "Atari ST palette" or "9-bit 
+palette" to find a proper one.
 
 To use img2daad you just need php (with GD support if you are going to use
 PNG files), and then run
@@ -22,6 +24,34 @@ Files must be numbered nnn.PNG or nnn.PI1, where n is the number of the location
 for each file. i.e. 012.PNG is the graphic for location 12. 
 
 Please notice PNG takes precedence over PI1 if both are available.
+
+Alternatively, you can also choose an output file:
+
+php img2daad <folder> <output-file>
+
+i.e. "php img2daad mygame/images PART2.DAT" will create PART2.DAT file instead
+of the default PART1.DAT.
+
+Text and palette
+----------------
+Please notice the palette applied to the graphic will also affect text. Thus,
+if you use a INK colour with low contrast with the background, it will be 
+hard for players to read text. 
+
+If you use Degas IP1 files, it's up to you to decide wich of the 16 colours you
+will use for the background (paper) and ink colours. If you use PNG files, 
+img2daad will take care of that and make sure the darkest colour in your palette
+is at position 0 of the palette (which the interpreter defaults for background, 
+PAPER 0), and whitest colour is at position 1 (which the interpreter defaults for
+foreground, INK 1). 
+
+Please notice img2daad doesn't have an accurate algorythm to find close colors to 
+black or white, so it would be better if you manage to have pure black and pure
+white in your palette for all pictures. 
+
+If not, well, the algorythm is made to be fast rather than accurate, so if you let
+img2daad to find the closest colour to white you may be lucky or not.
+
 
 Cutting
 -------
