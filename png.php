@@ -8,7 +8,7 @@ define('COLOUR_BLACK_PALETTE_IDX',0 );
 define('COLOUR_WHITE_PALETTE_IDX',15); 
 // The following colours are the objective when looking for white or black
 // You can change them if you want different text or background colours
-define('WHITE',0x0777);
+define('WHITE',0x0FFF);
 define('TRUECOLOR_WHITE',0xFFFFFF);
 define('BLACK',0x0000);
 define('TRUECOLOR_BLACK',0x000000);
@@ -92,13 +92,12 @@ class pngFileReader
             $r = ($colour >> 16) & 0xFF;
             $g = ($colour >> 8) & 0xFF;
             $b = $colour & 0xFF;
-            //if ($this->verbose) echo "Original Palete R: " .decbin($r) . " G " . decbin($g) . " B "  . decbin($b) . "\n";
-            // Reduce to 3 bit
-            $r = $r >> 4; $r=($r % 2)  + ($r >> 1); if ($r>7) $r= 7;  // Round up one if last bit lost is 1
-            $g = $g >> 4; $g=($g % 2)  + ($g >> 1); if ($g>7) $g= 7;  // unless the result will go over 111
-            $b = $b >> 4; $b=($b % 2)  + ($b >> 1); if ($b>7) $b= 7;  
-            //if ($this->verbose) echo "9-bit palette R: " .decbin($r) . " G " . decbin($g) . " B "  . decbin($b) . "\n";
-            // Convert to AtariST palette
+            // Reduce palette to 4 bit per component
+            $nr = $r >> 4; if ($r & 0x08) $nr++; $r = ($nr > 15) ? 15 : $nr;
+            $ng = $g >> 4; if ($g & 0x08) $ng++; $g = ($ng > 15) ? 15 : $ng;
+            $nb = $b >> 4; if ($b & 0x08) $nb++; $b = ($nb > 15) ? 15 : $nb;
+
+            // Convert to AtariSTe palette record
             $palette[$i] = $b + ($g << 4) + ($r << 8);
             // If one of them is already recognized as black or white, we note it down
             if ($palette[$i]==BLACK) 
@@ -257,9 +256,9 @@ class pngFileReader
      {
          if ($i==$skipColour) continue;
          // Get the palette components
-         $pr = ($palette[$i] & 0x0700)>>8;
-         $pg = ($palette[$i] & 0x0070)>>4;
-         $pb = $palette[$i] & 0x0007;
+         $pr = ($palette[$i] & 0x0F00)>>8;
+         $pg = ($palette[$i] & 0x00F0)>>4;
+         $pb = $palette[$i] & 0x000F;
          //compare with target colour
          $distance  = sqrt(( pow(abs($pr-$r),2)*0.4) + pow(abs($pg-$g)*0.4,2) + pow(abs($pb-$b)*0.2,2));
          if ($distance<$betterDistance)

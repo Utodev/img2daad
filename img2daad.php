@@ -185,15 +185,14 @@ foreach ($fileList as $location=>$fileData)
         // Now the palette
         $degas->seekFile(2);  // point to palette
 
-        for($i=0;$i<32;$i++) $outputFile[$locationPrt+12+$i] = $degas->readByte(); // read palette
-
-        $overPalette = false;
-        for ($i=0;$i<16;$i++)
+        for($i=0;$i<32;$i++) 
         {
-            if ($outputFile[$locationPrt+12+$i*2] & 0x0F > 7 ) $overPalette = 1; 
-            if ($outputFile[$locationPrt+12+$i*2+1] & 0x0F > 7 ) $overPalette = 1; 
-            if (($outputFile[$locationPrt+12+$i*2+1] & 0xF0 >> 4) > 7 ) $overPalette = 1; 
+            $outputFile[$locationPrt+12+$i] = $degas->readByte(); // read palette
+            //echo str_pad(dechex($outputFile[$locationPrt+12+$i]),2,'0',STR_PAD_LEFT);           
+            //if ($i%2!=0) echo ' ';
         }
+        echo "\n";
+
 
         /*
         Again, this part has been commented as values are already
