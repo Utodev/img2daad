@@ -32,7 +32,7 @@ class pngFileReader
         if ($imageSizes[0]!=320) return "Invalid resolution, must be 320x200"; // Expecting 320x200 image
         if ($imageSizes[1]!=200) return "Invalid resolution, must be 320x200"; // Expecting 320x200 image
 
-        $this->image = imagecreatefrompng ($filename);
+        $this->image = @imagecreatefrompng ($filename);
          // If the image is indexed, convert to truecolor because we will only process truecolor images later
          if (!imageistruecolor($this->image))
            if (!imagepalettetotruecolor($this->image)) 
@@ -78,6 +78,20 @@ class pngFileReader
         $lsb = $this->readByte();
         return $lsb + 256 * $msb;
     }
+
+    private function degasPalette($aByte)
+    {
+        
+        //echo "[ ". decbinn($aByte) . " > ";
+        $aByteLowNibble = $aByte & 0xF;
+        $aByteHighNibble = ($aByte & 0xF0) >> 4;
+        $aByteLowNibble = ($aByteLowNibble >> 1) + (($aByteLowNibble & 1) << 3);
+        $aByteHighNibble = ($aByteHighNibble >> 1) + (($aByteHighNibble & 1) << 3);
+        $aByte = $aByteLowNibble + ($aByteHighNibble << 4); 
+        //echo decbinn($aByte) . "] ";
+        return $aByte;
+    }
+
 
     // Converts the PNG image into a 32066 bytes buffer to work exactly as a Degas file (PI1)
     private function PNG2degas($differentColours)
@@ -210,8 +224,8 @@ class pngFileReader
         // The palette
         for ($i=0;$i<16;$i++)
         {
-            $this->fileContent[] = ($palette[$i]   &  0xFF00) >> 8; 
-            $this->fileContent[] = $palette[$i] &  0xFF;
+            $this->fileContent[] =  $this->degasPalette(   ($palette[$i]   &  0xFF00) >> 8   ); 
+            $this->fileContent[] =  $this->degasPalette( $palette[$i] &  0xFF  );
         }
 
         //The pixels
